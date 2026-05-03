@@ -472,7 +472,7 @@ export default function Upload() {
                                   <h4 className="text-xl font-bold text-white leading-tight">{liveResults.disease}</h4>
                                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest ${getSeverityClass(liveResults.severity)}`}>
                                     {liveResults.severity}
-                                  }</span>
+                                  </span>
                                 </div>
                                 <div className="space-y-1">
                                   <span className="text-[9px] text-white/40 font-mono uppercase tracking-widest">Recommended Actions</span>
