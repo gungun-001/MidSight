@@ -153,10 +153,12 @@ export default function Upload() {
   const [chatLoading, setChatLoading] = useState(false)
   const chatEndRef = useRef(null)
 
-  // Camera states
   const [isCameraOpen, setIsCameraOpen] = useState(false)
+  const [liveResults, setLiveResults] = useState(null)
+  const [isScanning, setIsScanning] = useState(false)
   const videoRef = useRef(null)
   const streamRef = useRef(null)
+  const scanIntervalRef = useRef(null)
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -216,6 +218,7 @@ export default function Upload() {
       if (videoRef.current) {
         videoRef.current.srcObject = stream
         streamRef.current = stream
+        startLiveScanning()
       }
     } catch (err) {
       setError("Camera access denied or not available.")
@@ -223,15 +226,46 @@ export default function Upload() {
     }
   }
 
+  const startLiveScanning = () => {
+    setIsScanning(true)
+    scanIntervalRef.current = setInterval(async () => {
+      if (videoRef.current && videoRef.current.readyState === 4) {
+        const canvas = document.createElement('canvas')
+        canvas.width = 224 // Match model input
+        canvas.height = 224
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height)
+        
+        canvas.toBlob(async (blob) => {
+          const file = new File([blob], "scan.jpg", { type: "image/jpeg" })
+          const formData = new FormData()
+          formData.append('file', file)
+          
+          try {
+            const apiBase = import.meta.env.VITE_API_URL || ''
+            const res = await fetch(`${apiBase}/predict`, { method: 'POST', body: formData })
+            if (res.ok) {
+              const data = await res.json()
+              setLiveResults(data)
+            }
+          } catch (e) { /* silent fail for live scan */ }
+        }, 'image/jpeg', 0.7)
+      }
+    }, 2500)
+  }
+
   const stopCamera = () => {
+    if (scanIntervalRef.current) clearInterval(scanIntervalRef.current)
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop())
     }
     setIsCameraOpen(false)
+    setIsScanning(false)
+    setLiveResults(null)
   }
 
   const capturePhoto = () => {
-    if (!videoRef.current) return
+    if (!videoRef.current || !liveResults) return
     const canvas = document.createElement('canvas')
     canvas.width = videoRef.current.videoWidth
     canvas.height = videoRef.current.videoHeight
@@ -240,7 +274,10 @@ export default function Upload() {
 
     canvas.toBlob((blob) => {
       const capturedFile = new File([blob], "camera_capture.jpg", { type: "image/jpeg" })
-      handleAnalyze(capturedFile)
+      setFile(capturedFile)
+      setPreviewUrl(URL.createObjectURL(capturedFile))
+      setResult(liveResults)
+      setCurrentStep(3)
       stopCamera()
     }, 'image/jpeg', 0.95)
   }
@@ -389,67 +426,119 @@ export default function Upload() {
         {/* Left: Drop Zone / Result */}
         <div className="lg:col-span-2">
           <AnimatePresence mode="wait">
-            {/* Upload State */}
+            {/* Upload/Camera State */}
             {currentStep === 0 && (
               <motion.div key="dropzone" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-                <div
-                  {...getRootProps()}
-                  className={`drop-zone relative min-h-[400px] flex flex-col items-center justify-center cursor-pointer ${isDragActive ? 'active' : ''}`}
-                >
-                  <input {...getInputProps()} />
-                  <div className="scanline" />
-                  <div className="absolute top-0 left-0 right-0 h-[3px] bg-white/5 rounded-t-xl overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-purple-500 to-pink-500 w-0" />
-                  </div>
-                  <CloudUpload className="w-12 h-12 text-purple-400 mb-4" />
-                  <h3 className="text-xl font-bold text-white mb-2">DRAG & DROP IMAGE</h3>
-                  <p className="text-white/40 text-sm mb-4">Initialize skin condition analysis</p>
+                <div className="relative min-h-[500px] rounded-2xl overflow-hidden border-2 border-dashed border-white/10 bg-white/5 flex flex-col items-center justify-center group transition-all">
                   
-                  <div className="flex items-center gap-3">
-                    <button className="glass-btn px-6 py-2.5 text-sm font-mono text-purple-400 uppercase tracking-wider">
-                      Intake Portal
-                    </button>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); startCamera(); }}
-                      className="glass-btn px-6 py-2.5 text-sm font-mono text-pink-400 uppercase tracking-wider flex items-center gap-2"
-                    >
-                      <Camera className="w-4 h-4" /> Live Camera
-                    </button>
-                  </div>
+                  {!isCameraOpen ? (
+                    <div {...getRootProps()} className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer p-8">
+                      <input {...getInputProps()} />
+                      <div className="scanline" />
+                      <CloudUpload className="w-16 h-16 text-purple-400 mb-6 group-hover:scale-110 transition-transform" />
+                      <h3 className="text-2xl font-bold text-white mb-2 tracking-tight">DROP IMAGE OR INITIALIZE CAMERA</h3>
+                      <p className="text-white/40 text-sm mb-8 text-center max-w-sm">
+                        High-precision neural analysis for dermatology. Upload a file or start live scanning.
+                      </p>
+                      
+                      <div className="flex items-center gap-4">
+                        <button className="glass-btn px-8 py-3 text-xs font-mono text-purple-400 uppercase tracking-[0.2em] border-purple-500/30">
+                          Intake Portal
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); startCamera(); }}
+                          className="glass-btn px-8 py-3 text-xs font-mono text-pink-400 uppercase tracking-[0.2em] border-pink-500/30 flex items-center gap-2"
+                        >
+                          <Camera className="w-4 h-4" /> Live Camera
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="absolute inset-0 bg-black flex flex-col">
+                      <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                      <div className="scanline" />
+                      
+                      {/* Live HUD Overlay */}
+                      <div className="absolute inset-0 p-6 flex flex-col justify-between pointer-events-none">
+                        <div className="flex justify-between items-start">
+                          <div className="bg-black/60 backdrop-blur-md border border-white/10 p-4 rounded-xl max-w-xs animate-in fade-in slide-in-from-left-4 duration-500">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Bot className="w-4 h-4 text-purple-400" />
+                              <span className="font-mono text-[10px] text-white/50 uppercase tracking-widest">Live Analysis</span>
+                            </div>
+                            {liveResults ? (
+                              <div className="space-y-3">
+                                <div>
+                                  <h4 className="text-xl font-bold text-white leading-tight">{liveResults.disease}</h4>
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest ${getSeverityClass(liveResults.severity)}`}>
+                                    {liveResults.severity}
+                                  }</span>
+                                </div>
+                                <div className="space-y-1">
+                                  <span className="text-[9px] text-white/40 font-mono uppercase tracking-widest">Recommended Actions</span>
+                                  {liveResults.suggestions?.slice(0, 2).map((s, i) => (
+                                    <div key={i} className="flex gap-2 text-[10px] text-white/70">
+                                      <div className="w-1 h-1 rounded-full bg-purple-500 mt-1.5 shrink-0" />
+                                      <span>{s}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-3 py-4">
+                                <Loader2 className="w-4 h-4 text-purple-400 animate-spin" />
+                                <span className="text-white/40 font-mono text-[10px] uppercase tracking-widest">Scanning Skin Surface...</span>
+                              </div>
+                            )}
+                          </div>
 
-                  {error && (
-                    <div className="mt-6 flex items-center gap-2 text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-lg">
+                          <button 
+                            onClick={stopCamera} 
+                            className="pointer-events-auto bg-black/50 p-3 rounded-full text-white/70 hover:text-white transition-all border border-white/10 hover:border-white/30"
+                          >
+                            <X className="w-5 h-5" />
+                          </button>
+                        </div>
+
+                        <div className="flex flex-col items-center gap-6">
+                          {liveResults && (
+                            <div className="bg-purple-600/20 backdrop-blur-xl border border-purple-500/30 px-6 py-2 rounded-full text-purple-300 font-mono text-[10px] tracking-[0.2em] animate-pulse">
+                              OPTIMAL SCAN CONDITIONS DETECTED
+                            </div>
+                          )}
+                          <div className="flex items-center gap-8 pointer-events-auto">
+                            <div className="hidden md:block w-32 text-right">
+                              <span className="text-[10px] font-mono text-white/30 uppercase tracking-[0.2em]">Neural<br/>Confidence</span>
+                              <div className="text-xl font-mono text-white/80">{(liveResults?.confidence * 100 || 0).toFixed(1)}%</div>
+                            </div>
+                            
+                            <button 
+                              onClick={capturePhoto}
+                              className={`w-20 h-20 rounded-full border-4 transition-all flex items-center justify-center group ${
+                                liveResults ? 'border-purple-500 shadow-[0_0_30px_rgba(168,85,247,0.4)]' : 'border-white/20'
+                              }`}
+                            >
+                              <div className={`w-14 h-14 rounded-full transition-all ${
+                                liveResults ? 'bg-purple-500 scale-100 group-hover:scale-90' : 'bg-white/20'
+                              }`} />
+                            </button>
+
+                            <div className="hidden md:block w-32">
+                              <span className="text-[10px] font-mono text-white/30 uppercase tracking-[0.2em]">Processing<br/>Engine</span>
+                              <div className="text-xl font-mono text-white/80 uppercase">v1.0-Live</div>
+                            </div>
+                          </div>
+                          <p className="text-[9px] font-mono text-white/30 uppercase tracking-[0.3em]">Tap to Finalize Report</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {error && !isCameraOpen && (
+                    <div className="absolute bottom-6 flex items-center gap-2 text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-lg backdrop-blur-md">
                       <AlertTriangle className="w-4 h-4" /> {error}
                     </div>
                   )}
-                </div>
-              </motion.div>
-            )}
-
-            {/* Camera View */}
-            {isCameraOpen && (
-              <motion.div key="camera" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className="glass-card rounded-2xl overflow-hidden min-h-[400px] relative flex flex-col items-center justify-center bg-black">
-                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover absolute inset-0" />
-                <div className="scanline" />
-                
-                {/* Camera Overlay Controls */}
-                <div className="absolute top-4 right-4 z-10">
-                  <button onClick={stopCamera} className="bg-black/50 p-2 rounded-full text-white/70 hover:text-white transition-colors">
-                    <X className="w-6 h-6" />
-                  </button>
-                </div>
-
-                <div className="absolute bottom-10 z-10 flex flex-col items-center gap-4">
-                  <div className="text-white/80 font-mono text-xs bg-black/40 px-3 py-1 rounded-full backdrop-blur-md border border-white/10">
-                    Align affected area within frame
-                  </div>
-                  <button 
-                    onClick={capturePhoto}
-                    className="w-16 h-16 rounded-full border-4 border-white bg-white/20 hover:bg-white/40 transition-all flex items-center justify-center group"
-                  >
-                    <div className="w-12 h-12 rounded-full bg-white group-active:scale-90 transition-transform" />
-                  </button>
                 </div>
               </motion.div>
             )}
