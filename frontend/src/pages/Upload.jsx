@@ -5,7 +5,8 @@ import { jsPDF } from 'jspdf'
 import {
   ImagePlus, Search, Zap, CheckCircle, CloudUpload,
   RotateCcw, AlertTriangle, ChevronRight, Bot, Loader2,
-  Shield, Stethoscope, Download, Save, Send, FileText
+  Shield, Stethoscope, Download, Save, Send, FileText,
+  Camera, X
 } from 'lucide-react'
 
 const STEPS = [
@@ -152,6 +153,11 @@ export default function Upload() {
   const [chatLoading, setChatLoading] = useState(false)
   const chatEndRef = useRef(null)
 
+  // Camera states
+  const [isCameraOpen, setIsCameraOpen] = useState(false)
+  const videoRef = useRef(null)
+  const streamRef = useRef(null)
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages])
@@ -197,6 +203,46 @@ export default function Upload() {
       }])
     }
     setChatLoading(false)
+  }
+
+  // ── Camera Methods ─────────────────────────────────────────────────────────
+  const startCamera = async () => {
+    setIsCameraOpen(true)
+    setError(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+      })
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        streamRef.current = stream
+      }
+    } catch (err) {
+      setError("Camera access denied or not available.")
+      setIsCameraOpen(false)
+    }
+  }
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop())
+    }
+    setIsCameraOpen(false)
+  }
+
+  const capturePhoto = () => {
+    if (!videoRef.current) return
+    const canvas = document.createElement('canvas')
+    canvas.width = videoRef.current.videoWidth
+    canvas.height = videoRef.current.videoHeight
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(videoRef.current, 0, 0)
+
+    canvas.toBlob((blob) => {
+      const capturedFile = new File([blob], "camera_capture.jpg", { type: "image/jpeg" })
+      handleAnalyze(capturedFile)
+      stopCamera()
+    }, 'image/jpeg', 0.95)
   }
 
   // ── Analyze Image ──────────────────────────────────────────────────────────
@@ -358,14 +404,52 @@ export default function Upload() {
                   <CloudUpload className="w-12 h-12 text-purple-400 mb-4" />
                   <h3 className="text-xl font-bold text-white mb-2">DRAG & DROP IMAGE</h3>
                   <p className="text-white/40 text-sm mb-4">Initialize skin condition analysis</p>
-                  <button className="glass-btn px-6 py-2.5 text-sm font-mono text-purple-400 uppercase tracking-wider">
-                    Intake Portal
-                  </button>
+                  
+                  <div className="flex items-center gap-3">
+                    <button className="glass-btn px-6 py-2.5 text-sm font-mono text-purple-400 uppercase tracking-wider">
+                      Intake Portal
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); startCamera(); }}
+                      className="glass-btn px-6 py-2.5 text-sm font-mono text-pink-400 uppercase tracking-wider flex items-center gap-2"
+                    >
+                      <Camera className="w-4 h-4" /> Live Camera
+                    </button>
+                  </div>
+
                   {error && (
                     <div className="mt-6 flex items-center gap-2 text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-lg">
                       <AlertTriangle className="w-4 h-4" /> {error}
                     </div>
                   )}
+                </div>
+              </motion.div>
+            )}
+
+            {/* Camera View */}
+            {isCameraOpen && (
+              <motion.div key="camera" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="glass-card rounded-2xl overflow-hidden min-h-[400px] relative flex flex-col items-center justify-center bg-black">
+                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover absolute inset-0" />
+                <div className="scanline" />
+                
+                {/* Camera Overlay Controls */}
+                <div className="absolute top-4 right-4 z-10">
+                  <button onClick={stopCamera} className="bg-black/50 p-2 rounded-full text-white/70 hover:text-white transition-colors">
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <div className="absolute bottom-10 z-10 flex flex-col items-center gap-4">
+                  <div className="text-white/80 font-mono text-xs bg-black/40 px-3 py-1 rounded-full backdrop-blur-md border border-white/10">
+                    Align affected area within frame
+                  </div>
+                  <button 
+                    onClick={capturePhoto}
+                    className="w-16 h-16 rounded-full border-4 border-white bg-white/20 hover:bg-white/40 transition-all flex items-center justify-center group"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-white group-active:scale-90 transition-transform" />
+                  </button>
                 </div>
               </motion.div>
             )}

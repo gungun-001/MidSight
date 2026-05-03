@@ -14,6 +14,7 @@ MedSight is a sophisticated, full-stack medical AI application designed for skin
 - **4 Detection Classes**: Acne, Eczema, Psoriasis, and Normal Skin.
 - **Severity Scoring**: Automatic categorization into *Mild*, *Moderate*, or *Severe*.
 - **Interactive Stepper**: 4-step analysis pipeline (Upload → Analyze → Detect → Complete).
+- **Live Camera Capture**: Integrated webcam support for direct image intake and analysis.
 
 ### 2. MedSight AI Chatbot
 - **LLM Integration**: Powered by Groq (Llama 3.1) for instant medical education.
