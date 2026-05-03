@@ -10,6 +10,7 @@ MedSight is a sophisticated, full-stack medical AI application designed for skin
 ## 🌟 Core Features
 
 ### 1. Neural Inspector (Upload & Analyze)
+- **Video Demo**: Check out the [MedSight Demo Video](videos/demo_video.mp4)
 - **Deep Learning Inference**: Real-time classification using a trained MobileNetV2 CNN.
 - **4 Detection Classes**: Acne, Eczema, Psoriasis, and Normal Skin.
 - **Severity Scoring**: Automatic categorization into *Mild*, *Moderate*, or *Severe*.
